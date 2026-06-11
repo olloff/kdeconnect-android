@@ -24,11 +24,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -195,30 +197,41 @@ fun ShutdownTimerScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     val remainingMillis = state.remainingMillis(now)
-                    // The plugin tracks the timer's full duration across
-                    // screen visits and app restarts
-                    val totalMillis = plugin.totalDurationMillis
-                    val progress = if (state.isActive && totalMillis > 0) {
-                        (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
+                    if (WindowInsets.isImeVisible) {
+                        // The ring does not fit above the keyboard; show the
+                        // bare countdown instead of a squeezed graphic
+                        if (state.isActive) {
+                            Text(
+                                text = DateUtils.formatElapsedTime(remainingMillis / 1_000),
+                                style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum"),
+                            )
+                        }
                     } else {
-                        0f
-                    }
-                    val deadlineLabel = if (state.isActive) {
-                        val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
-                        stringResource(
-                            R.string.shutdown_timer_action_at_time,
-                            stringResource(actionFor(state.action).label),
-                            timeFormat.format(Date(state.deadline)),
+                        // The plugin tracks the timer's full duration across
+                        // screen visits and app restarts
+                        val totalMillis = plugin.totalDurationMillis
+                        val progress = if (state.isActive && totalMillis > 0) {
+                            (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
+                        } else {
+                            0f
+                        }
+                        val deadlineLabel = if (state.isActive) {
+                            val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
+                            stringResource(
+                                R.string.shutdown_timer_action_at_time,
+                                stringResource(actionFor(state.action).label),
+                                timeFormat.format(Date(state.deadline)),
+                            )
+                        } else {
+                            null
+                        }
+                        CountdownRing(
+                            isActive = state.isActive,
+                            remainingMillis = remainingMillis,
+                            progress = progress,
+                            label = deadlineLabel,
                         )
-                    } else {
-                        null
                     }
-                    CountdownRing(
-                        isActive = state.isActive,
-                        remainingMillis = remainingMillis,
-                        progress = progress,
-                        label = deadlineLabel,
-                    )
                 }
 
                 ActionPicker(
