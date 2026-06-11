@@ -5,8 +5,13 @@
  */
 package org.kde.kdeconnect.plugins
 
+import android.Manifest
+import android.app.Application
+import android.app.NotificationManager
 import android.content.Context
-import android.content.SharedPreferences
+import android.os.Looper
+import androidx.core.content.edit
+import androidx.test.core.app.ApplicationProvider
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,20 +19,25 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 import org.kde.kdeconnect.Device
 import org.kde.kdeconnect.NetworkPacket
 import org.kde.kdeconnect.plugins.shutdowntimer.ShutdownTimerPlugin
 import org.kde.kdeconnect.plugins.shutdowntimer.ShutdownTimerState
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import java.time.Duration
 
+@RunWith(RobolectricTestRunner::class)
 class ShutdownTimerPluginTest {
 
     private fun executeWithMocks(test: (device: Device, plugin: ShutdownTimerPlugin) -> Unit) {
         val plugin = ShutdownTimerPlugin()
-        val context = mockk<Context> {
-            every { getSharedPreferences(any(), any()) } returns mockk<SharedPreferences>()
-        }
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        shadowOf(context).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         val device = mockk<Device> {
             every { name } returns "Test Device"
+            every { deviceId } returns "test_device_id"
             every { sendPacket(any()) } returns Unit
         }
         plugin.setContext(context, device)
@@ -42,6 +52,10 @@ class ShutdownTimerPluginTest {
                 np["deadline"] = deadline
             }
         }
+
+    private val notificationManager: NotificationManager
+        get() = ApplicationProvider.getApplicationContext<Application>()
+            .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     @Test
     fun parsesActiveStatusPacket() {
@@ -139,5 +153,77 @@ class ShutdownTimerPluginTest {
         assertEquals(40_000, state.remainingMillis(nowMillis = 60_000))
         assertEquals(0, state.remainingMillis(nowMillis = 100_001)) // never negative
         assertEquals(0, ShutdownTimerState.INACTIVE.remainingMillis(nowMillis = 0))
+    }
+
+    @Test
+    fun warningNotificationIsPostedBeforeDeadline() {
+        executeWithMocks { _, plugin ->
+            // 10 minute timer with the default 5 minute warning lead
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(10).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            val mainLooper = shadowOf(Looper.getMainLooper())
+            mainLooper.idleFor(Duration.ofMinutes(4))
+            assertEquals(0, shadowOf(notificationManager).size())
+
+            mainLooper.idleFor(Duration.ofMinutes(2))
+            assertEquals(1, shadowOf(notificationManager).size())
+        }
+    }
+
+    @Test
+    fun warningRespectsConfiguredLeadTime() {
+        executeWithMocks { _, plugin ->
+            plugin.preferences!!.edit { putString(ShutdownTimerPlugin.PREF_WARNING_MINUTES, "1") }
+
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(10).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            val mainLooper = shadowOf(Looper.getMainLooper())
+            mainLooper.idleFor(Duration.ofMinutes(8))
+            assertEquals(0, shadowOf(notificationManager).size())
+
+            mainLooper.idleFor(Duration.ofMinutes(2))
+            assertEquals(1, shadowOf(notificationManager).size())
+        }
+    }
+
+    @Test
+    fun warningCanBeDisabled() {
+        executeWithMocks { _, plugin ->
+            plugin.preferences!!.edit { putString(ShutdownTimerPlugin.PREF_WARNING_MINUTES, "0") }
+
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(10).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(11))
+            assertEquals(0, shadowOf(notificationManager).size())
+        }
+    }
+
+    @Test
+    fun warningIsCancelledWhenTimerIsCancelled() {
+        executeWithMocks { _, plugin ->
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(10).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+            plugin.onPacketReceived(statusPacket(false))
+
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(11))
+            assertEquals(0, shadowOf(notificationManager).size())
+        }
+    }
+
+    @Test
+    fun postedWarningIsDismissedWhenTimerIsCancelled() {
+        executeWithMocks { _, plugin ->
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(6).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMinutes(2))
+            assertEquals(1, shadowOf(notificationManager).size())
+
+            plugin.onPacketReceived(statusPacket(false))
+            assertEquals(0, shadowOf(notificationManager).size())
+        }
     }
 }

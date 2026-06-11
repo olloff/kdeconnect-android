@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+SPDX-FileCopyrightText: 2026 olloff <olloff@gmail.com>
+
+SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+-->
+
+<androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:keep="@xml/shutdowntimerplugin_preferences">
+
+    <ListPreference
+        android:defaultValue="5"
+        android:entries="@array/shutdown_timer_warning_entries"
+        android:entryValues="@array/shutdown_timer_warning_values"
+        android:key="shutdown_timer_warning_minutes"
+        android:summary="%s"
+        android:title="@string/shutdown_timer_warning_pref_title" />
+
+</androidx.preference.PreferenceScreen>

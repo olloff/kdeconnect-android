@@ -61,6 +61,27 @@ SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted
     <string name="shutdown_timer_preset_hours">%1$d h</string>
     <string name="shutdown_timer_schedule">Start timer</string>
     <string name="shutdown_timer_hold_to_cancel">Hold to cancel</string>
+    <string name="shutdown_timer_warning_shutdown">Shutting down in %1$s</string>
+    <string name="shutdown_timer_warning_reboot">Rebooting in %1$s</string>
+    <string name="shutdown_timer_warning_suspend">Suspending in %1$s</string>
+    <string name="shutdown_timer_notification_cancel">Cancel timer</string>
+    <string name="shutdown_timer_warning_pref_title">Warn before the timer ends</string>
+    <string-array name="shutdown_timer_warning_entries">
+        <item>Off</item>
+        <item>1 minute before</item>
+        <item>2 minutes before</item>
+        <item>5 minutes before</item>
+        <item>10 minutes before</item>
+        <item>15 minutes before</item>
+    </string-array>
+    <string-array name="shutdown_timer_warning_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>5</item>
+        <item>10</item>
+        <item>15</item>
+    </string-array>
     <string name="pref_plugin_notifications">Notification sync</string>
     <string name="pref_plugin_notifications_desc">Access your notifications from other devices</string>
     <string name="pref_plugin_receive_notifications">Receive notifications</string>
