@@ -93,6 +93,29 @@ class ShutdownTimerPlugin : Plugin() {
     }
 
     /**
+     * Delay presets (in minutes) offered by the UI, persisted per device.
+     * Starts with the built-in defaults; every custom delay the user starts
+     * a timer with is added once via [addPresetMinutes].
+     */
+    val presetMinutes: List<Long>
+        get() {
+            val raw = preferences?.getString(PREF_PRESETS, null) ?: return DEFAULT_PRESET_MINUTES
+            return raw.split(',').mapNotNull(String::toLongOrNull).ifEmpty { DEFAULT_PRESET_MINUTES }
+        }
+
+    fun addPresetMinutes(minutes: Long) {
+        if (minutes <= 0 || minutes in presetMinutes) {
+            return
+        }
+        val updated = (presetMinutes + minutes).toMutableList()
+        while (updated.size > MAX_PRESETS) {
+            // Defaults stay at the front, so this drops the oldest custom value
+            updated.removeAt(DEFAULT_PRESET_MINUTES.size)
+        }
+        preferences?.edit { putString(PREF_PRESETS, updated.joinToString(",")) }
+    }
+
+    /**
      * The action the user last picked in the UI, persisted per device.
      */
     var lastSelectedAction: String
@@ -271,6 +294,12 @@ class ShutdownTimerPlugin : Plugin() {
         private const val PREF_LAST_ACTION = "shutdown_timer_last_action"
         private const val PREF_TOTAL_DEADLINE = "shutdown_timer_total_deadline"
         private const val PREF_TOTAL_MILLIS = "shutdown_timer_total_millis"
+        private const val PREF_PRESETS = "shutdown_timer_presets"
+
+        val DEFAULT_PRESET_MINUTES = listOf(15L, 30L, 60L, 120L)
+
+        // Together with the "+" chip this keeps the preset row at two lines
+        const val MAX_PRESETS = 9
 
         // A status packet this soon after our own schedule request is assumed
         // to be its acknowledgement, so the requested duration is exact.

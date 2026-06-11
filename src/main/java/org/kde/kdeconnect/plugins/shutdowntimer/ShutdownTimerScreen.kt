@@ -20,28 +20,28 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
@@ -67,8 +67,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -82,8 +84,7 @@ import org.kde.kdeconnect.ui.compose.KdeTopAppBar
 import org.kde.kdeconnect_tp.R
 import java.util.Date
 
-private const val HOLD_TO_CANCEL_MILLIS = 1200
-private val PRESET_MINUTES = listOf(15L, 30L, 60L, 120L)
+private const val HOLD_TO_CONFIRM_MILLIS = 1200
 
 private data class TimerAction(
     val id: String,
@@ -100,6 +101,7 @@ private val ACTIONS = listOf(
 private fun actionFor(id: String?): TimerAction =
     ACTIONS.firstOrNull { it.id == id } ?: ACTIONS.first()
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ShutdownTimerScreen(
     plugin: ShutdownTimerPlugin,
@@ -113,6 +115,8 @@ fun ShutdownTimerScreen(
     var selectedAction by remember { mutableStateOf(plugin.lastSelectedAction) }
     var actionPickerExpanded by rememberSaveable { mutableStateOf(false) }
     var minutesText by rememberSaveable { mutableStateOf("30") }
+    var customInputVisible by rememberSaveable { mutableStateOf(false) }
+    var presets by remember { mutableStateOf(plugin.presetMinutes) }
 
     DisposableEffect(plugin) {
         val listener = ShutdownTimerPlugin.StateListener { state = it }
@@ -163,48 +167,59 @@ fun ShutdownTimerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                ConnectionStatusCard(deviceName = device.name, isReachable = isReachable)
+                if (!isReachable) {
+                    NotReachableCard(deviceName = device.name)
+                }
 
                 if (state.isActive) {
-                    HoldToCancelButton(
+                    HoldToConfirmButton(
+                        text = stringResource(R.string.shutdown_timer_hold_to_cancel),
+                        icon = Icons.Default.Close,
                         enabled = isReachable,
                         onConfirm = plugin::cancelShutdown,
+                        contentColor = MaterialTheme.colorScheme.error,
+                        fillColor = MaterialTheme.colorScheme.errorContainer,
                     )
                 }
 
-                val remainingMillis = state.remainingMillis(now)
-                // The plugin tracks the timer's full duration across screen
-                // visits and app restarts; reading it here is cheap and the
-                // value only changes together with `state`.
-                val totalMillis = plugin.totalDurationMillis
-                val progress = if (state.isActive && totalMillis > 0) {
-                    (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
-                } else {
-                    0f
-                }
-                val deadlineLabel = if (state.isActive) {
-                    val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
-                    stringResource(
-                        R.string.shutdown_timer_action_at_time,
-                        stringResource(actionFor(state.action).label),
-                        timeFormat.format(Date(state.deadline)),
+                // The flexible middle pins the schedule block below to the
+                // bottom of the screen
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val remainingMillis = state.remainingMillis(now)
+                    // The plugin tracks the timer's full duration across
+                    // screen visits and app restarts
+                    val totalMillis = plugin.totalDurationMillis
+                    val progress = if (state.isActive && totalMillis > 0) {
+                        (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val deadlineLabel = if (state.isActive) {
+                        val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
+                        stringResource(
+                            R.string.shutdown_timer_action_at_time,
+                            stringResource(actionFor(state.action).label),
+                            timeFormat.format(Date(state.deadline)),
+                        )
+                    } else {
+                        null
+                    }
+                    CountdownRing(
+                        isActive = state.isActive,
+                        remainingMillis = remainingMillis,
+                        progress = progress,
+                        label = deadlineLabel,
                     )
-                } else {
-                    null
                 }
-                CountdownRing(
-                    isActive = state.isActive,
-                    remainingMillis = remainingMillis,
-                    progress = progress,
-                    label = deadlineLabel,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
-
-                HorizontalDivider()
 
                 ActionPicker(
                     selectedAction = selectedAction,
@@ -218,15 +233,22 @@ fun ShutdownTimerScreen(
                     },
                 )
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PRESET_MINUTES.forEach { preset ->
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    maxLines = 2,
+                ) {
+                    presets.forEach { preset ->
                         FilterChip(
                             selected = minutesText == preset.toString(),
-                            onClick = { minutesText = preset.toString() },
+                            onClick = {
+                                minutesText = preset.toString()
+                                customInputVisible = false
+                            },
                             enabled = isReachable,
                             label = {
                                 Text(
-                                    if (preset < 60) {
+                                    if (preset < 60 || preset % 60 != 0L) {
                                         stringResource(R.string.shutdown_timer_preset_minutes, preset)
                                     } else {
                                         stringResource(R.string.shutdown_timer_preset_hours, preset / 60)
@@ -235,59 +257,70 @@ fun ShutdownTimerScreen(
                             },
                         )
                     }
+                    FilterChip(
+                        selected = customInputVisible,
+                        onClick = { customInputVisible = !customInputVisible },
+                        enabled = isReachable,
+                        label = {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.shutdown_timer_add_custom),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        },
+                    )
                 }
 
-                OutlinedTextField(
-                    value = minutesText,
-                    onValueChange = { minutesText = it.filter(Char::isDigit).take(6) },
-                    label = { Text(stringResource(R.string.shutdown_timer_delay_minutes)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    enabled = isReachable,
-                )
+                if (customInputVisible) {
+                    OutlinedTextField(
+                        value = minutesText,
+                        onValueChange = { minutesText = it.filter(Char::isDigit).take(6) },
+                        label = { Text(stringResource(R.string.shutdown_timer_delay_minutes)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        enabled = isReachable,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
                 val minutes = minutesText.toLongOrNull()
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
+                HoldToConfirmButton(
+                    text = stringResource(R.string.shutdown_timer_hold_to_start),
+                    icon = Icons.Default.PlayArrow,
                     enabled = isReachable && minutes != null && minutes > 0,
-                    onClick = {
-                        minutes?.let { plugin.scheduleShutdown(selectedAction, it * 60) }
+                    onConfirm = {
+                        minutes?.let {
+                            plugin.addPresetMinutes(it)
+                            presets = plugin.presetMinutes
+                            customInputVisible = false
+                            plugin.scheduleShutdown(selectedAction, it * 60)
+                        }
                     },
-                ) {
-                    Text(stringResource(R.string.shutdown_timer_schedule))
-                }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ConnectionStatusCard(
+private fun NotReachableCard(
     deviceName: String,
-    isReachable: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MaterialTheme.colorScheme
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        color = if (isReachable) colors.secondaryContainer else colors.errorContainer,
-        contentColor = if (isReachable) colors.onSecondaryContainer else colors.onErrorContainer,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = if (isReachable) Icons.Default.CheckCircle else Icons.Default.Warning,
-                contentDescription = null,
-            )
+            Icon(imageVector = Icons.Default.Warning, contentDescription = null)
             Spacer(Modifier.width(12.dp))
             Text(
-                text = stringResource(
-                    if (isReachable) R.string.shutdown_timer_connected else R.string.shutdown_timer_not_reachable,
-                    deviceName,
-                ),
+                text = stringResource(R.string.shutdown_timer_not_reachable, deviceName),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -295,10 +328,14 @@ private fun ConnectionStatusCard(
 }
 
 @Composable
-private fun HoldToCancelButton(
+private fun HoldToConfirmButton(
+    text: String,
+    icon: ImageVector,
     enabled: Boolean,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier,
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+    fillColor: Color = MaterialTheme.colorScheme.primaryContainer,
 ) {
     val currentOnConfirm by rememberUpdatedState(onConfirm)
     val fillFraction = remember { Animatable(0f) }
@@ -309,7 +346,7 @@ private fun HoldToCancelButton(
             val remainingFraction = 1f - fillFraction.value
             fillFraction.animateTo(
                 targetValue = 1f,
-                animationSpec = tween((HOLD_TO_CANCEL_MILLIS * remainingFraction).toInt(), easing = LinearEasing),
+                animationSpec = tween((HOLD_TO_CONFIRM_MILLIS * remainingFraction).toInt(), easing = LinearEasing),
             )
             currentOnConfirm()
             fillFraction.snapTo(0f)
@@ -318,14 +355,13 @@ private fun HoldToCancelButton(
         }
     }
 
-    val colors = MaterialTheme.colorScheme
-    val contentColor = if (enabled) colors.error else colors.error.copy(alpha = 0.38f)
+    val effectiveContent = if (enabled) contentColor else contentColor.copy(alpha = 0.38f)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
             .clip(CircleShape)
-            .border(1.dp, contentColor, CircleShape)
+            .border(1.dp, effectiveContent, CircleShape)
             .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(
@@ -343,18 +379,18 @@ private fun HoldToCancelButton(
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
                 .fillMaxWidth(fillFraction.value)
-                .background(colors.errorContainer),
+                .background(fillColor),
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = Icons.Default.Close,
+                imageVector = icon,
                 contentDescription = null,
-                tint = contentColor,
+                tint = effectiveContent,
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.shutdown_timer_hold_to_cancel),
-                color = contentColor,
+                text = text,
+                color = effectiveContent,
                 style = MaterialTheme.typography.labelLarge,
             )
         }
@@ -433,48 +469,57 @@ private fun ActionPicker(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (expanded) {
-        SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
-            ACTIONS.forEachIndexed { index, action ->
-                SegmentedButton(
-                    selected = action.id == selectedAction,
-                    onClick = { onSelect(action.id) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = ACTIONS.size),
-                    enabled = enabled,
-                    icon = {
-                        Icon(
-                            painter = painterResource(action.icon),
-                            contentDescription = null,
-                            modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
-                        )
-                    },
-                ) {
-                    Text(stringResource(action.label), maxLines = 1)
+    // Fixed height so the layout does not jump between the two modes
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp),
+    ) {
+        if (expanded) {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxSize()) {
+                ACTIONS.forEachIndexed { index, action ->
+                    SegmentedButton(
+                        selected = action.id == selectedAction,
+                        onClick = { onSelect(action.id) },
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ACTIONS.size),
+                        enabled = enabled,
+                        icon = {
+                            Icon(
+                                painter = painterResource(action.icon),
+                                contentDescription = null,
+                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize),
+                            )
+                        },
+                    ) {
+                        Text(stringResource(action.label), maxLines = 1)
+                    }
                 }
             }
-        }
-    } else {
-        val action = actionFor(selectedAction)
-        OutlinedCard(
-            onClick = onExpand,
-            enabled = enabled,
-            modifier = modifier.fillMaxWidth(),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        } else {
+            val action = actionFor(selectedAction)
+            OutlinedCard(
+                onClick = onExpand,
+                enabled = enabled,
+                modifier = Modifier.fillMaxSize(),
             ) {
-                Icon(painter = painterResource(action.icon), contentDescription = null)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = stringResource(action.label),
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = stringResource(R.string.shutdown_timer_change_action),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(painter = painterResource(action.icon), contentDescription = null)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = stringResource(action.label),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = stringResource(R.string.shutdown_timer_change_action),
+                    )
+                }
             }
         }
     }

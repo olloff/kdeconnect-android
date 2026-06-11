@@ -266,6 +266,33 @@ class ShutdownTimerPluginTest {
     }
 
     @Test
+    fun presetsStartWithDefaultsAndGrowUniquely() {
+        executeWithMocks { _, plugin ->
+            assertEquals(ShutdownTimerPlugin.DEFAULT_PRESET_MINUTES, plugin.presetMinutes)
+
+            plugin.addPresetMinutes(45)
+            plugin.addPresetMinutes(45) // duplicate, ignored
+            plugin.addPresetMinutes(30) // already a default, ignored
+            plugin.addPresetMinutes(0) // invalid, ignored
+
+            assertEquals(ShutdownTimerPlugin.DEFAULT_PRESET_MINUTES + 45L, plugin.presetMinutes)
+        }
+    }
+
+    @Test
+    fun presetsAreCappedDroppingTheOldestCustomValue() {
+        executeWithMocks { _, plugin ->
+            val customs = (1..7).map { it * 7L } // 7, 14, ..., 49: unique, no default collisions
+            customs.forEach(plugin::addPresetMinutes)
+
+            val presets = plugin.presetMinutes
+            assertEquals(ShutdownTimerPlugin.MAX_PRESETS, presets.size)
+            // Defaults survive; the oldest customs (7, 14) were dropped
+            assertEquals(ShutdownTimerPlugin.DEFAULT_PRESET_MINUTES + listOf(21L, 28L, 35L, 42L, 49L), presets)
+        }
+    }
+
+    @Test
     fun lastSelectedActionIsPersistedAcrossPluginInstances() {
         executeWithMocks { device, plugin ->
             assertEquals(ShutdownTimerState.ACTION_SHUTDOWN, plugin.lastSelectedAction)
