@@ -17,6 +17,7 @@ import android.os.Looper
 import android.text.format.DateUtils
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import org.kde.kdeconnect.NetworkPacket
 import org.kde.kdeconnect.helpers.NotificationHelper
@@ -66,6 +67,7 @@ class ShutdownTimerPlugin : Plugin() {
             return false
         }
         state = ShutdownTimerState.fromPacket(np)
+        recordTotalDuration()
         rescheduleWarning()
         stateListeners.forEach { it.onStateChanged(state) }
         return true
@@ -82,10 +84,58 @@ class ShutdownTimerPlugin : Plugin() {
      * on the remote device in [seconds] seconds, replacing any pending timer.
      */
     fun scheduleShutdown(action: String, seconds: Long) {
+        requestedSeconds = seconds
+        requestedAtMillis = System.currentTimeMillis()
         val np = NetworkPacket(PACKET_TYPE_SHUTDOWNTIMER_REQUEST)
         np["setAction"] = action
         np["setSeconds"] = seconds
         device.sendPacket(np)
+    }
+
+    /**
+     * The action the user last picked in the UI, persisted per device.
+     */
+    var lastSelectedAction: String
+        get() = preferences?.getString(PREF_LAST_ACTION, null) ?: ShutdownTimerState.ACTION_SHUTDOWN
+        set(value) {
+            preferences?.edit { putString(PREF_LAST_ACTION, value) }
+        }
+
+    /**
+     * Wall-clock duration of the currently pending timer in milliseconds, or
+     * 0 when unknown. The protocol only carries the deadline, so this is the
+     * requested duration when this device scheduled the timer, and otherwise
+     * the time measured from when the first status packet for the current
+     * deadline arrived. Persisted so countdown progress survives leaving the
+     * screen and even an app restart.
+     */
+    val totalDurationMillis: Long
+        get() {
+            val prefs = preferences ?: return 0
+            if (!state.isActive || prefs.getLong(PREF_TOTAL_DEADLINE, 0) != state.deadline) {
+                return 0
+            }
+            return prefs.getLong(PREF_TOTAL_MILLIS, 0)
+        }
+
+    private var requestedSeconds = 0L
+    private var requestedAtMillis = 0L
+
+    private fun recordTotalDuration() {
+        val prefs = preferences ?: return
+        if (!state.isActive || prefs.getLong(PREF_TOTAL_DEADLINE, 0) == state.deadline) {
+            return
+        }
+        val now = System.currentTimeMillis()
+        val total = if (requestedSeconds > 0 && now - requestedAtMillis < REQUEST_MATCH_WINDOW_MILLIS) {
+            requestedSeconds * 1_000
+        } else {
+            state.deadline - now
+        }
+        prefs.edit {
+            putLong(PREF_TOTAL_DEADLINE, state.deadline)
+            putLong(PREF_TOTAL_MILLIS, total.coerceAtLeast(1))
+        }
     }
 
     /**
@@ -217,5 +267,13 @@ class ShutdownTimerPlugin : Plugin() {
 
         const val PREF_WARNING_MINUTES = "shutdown_timer_warning_minutes"
         const val DEFAULT_WARNING_MINUTES = 5L
+
+        private const val PREF_LAST_ACTION = "shutdown_timer_last_action"
+        private const val PREF_TOTAL_DEADLINE = "shutdown_timer_total_deadline"
+        private const val PREF_TOTAL_MILLIS = "shutdown_timer_total_millis"
+
+        // A status packet this soon after our own schedule request is assumed
+        // to be its acknowledgement, so the requested duration is exact.
+        private const val REQUEST_MATCH_WINDOW_MILLIS = 30_000L
     }
 }

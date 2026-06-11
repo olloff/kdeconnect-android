@@ -110,7 +110,7 @@ fun ShutdownTimerScreen(
     var state by remember { mutableStateOf(plugin.state) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var isReachable by remember { mutableStateOf(device.isReachable) }
-    var selectedAction by rememberSaveable { mutableStateOf(ShutdownTimerState.ACTION_SHUTDOWN) }
+    var selectedAction by remember { mutableStateOf(plugin.lastSelectedAction) }
     var actionPickerExpanded by rememberSaveable { mutableStateOf(false) }
     var minutesText by rememberSaveable { mutableStateOf("30") }
 
@@ -147,16 +147,6 @@ fun ShutdownTimerScreen(
         }
     }
 
-    // The protocol only carries the deadline, not the originally requested
-    // duration, so the ring's full extent is measured from when this device
-    // first learned about the current timer.
-    var totalMillis by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(state.isActive, state.deadline) {
-        if (state.isActive) {
-            totalMillis = (state.deadline - System.currentTimeMillis()).coerceAtLeast(1L)
-        }
-    }
-
     KdeTheme(context) {
         Scaffold(
             modifier = Modifier.safeDrawingPadding(),
@@ -187,6 +177,10 @@ fun ShutdownTimerScreen(
                 }
 
                 val remainingMillis = state.remainingMillis(now)
+                // The plugin tracks the timer's full duration across screen
+                // visits and app restarts; reading it here is cheap and the
+                // value only changes together with `state`.
+                val totalMillis = plugin.totalDurationMillis
                 val progress = if (state.isActive && totalMillis > 0) {
                     (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
                 } else {
@@ -219,6 +213,7 @@ fun ShutdownTimerScreen(
                     onExpand = { actionPickerExpanded = true },
                     onSelect = {
                         selectedAction = it
+                        plugin.lastSelectedAction = it
                         actionPickerExpanded = false
                     },
                 )

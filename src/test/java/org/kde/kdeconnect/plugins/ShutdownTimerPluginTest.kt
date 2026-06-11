@@ -214,6 +214,70 @@ class ShutdownTimerPluginTest {
     }
 
     @Test
+    fun totalDurationIsTheRequestedOneWhenThisDeviceScheduled() {
+        executeWithMocks { _, plugin ->
+            plugin.scheduleShutdown(ShutdownTimerState.ACTION_SHUTDOWN, 600)
+            // The host acknowledges with a deadline slightly in the past of
+            // the ideal now+600s because of network latency
+            val deadline = System.currentTimeMillis() + Duration.ofSeconds(599).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            assertEquals(600_000L, plugin.totalDurationMillis)
+        }
+    }
+
+    @Test
+    fun totalDurationIsMeasuredFromFirstKnowledgeOtherwise() {
+        executeWithMocks { _, plugin ->
+            // Scheduled by someone else: no preceding request from this device
+            val deadline = System.currentTimeMillis() + Duration.ofMinutes(5).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            val total = plugin.totalDurationMillis
+            assertTrue("expected ~5 min, got $total", total in 295_000..300_000)
+        }
+    }
+
+    @Test
+    fun totalDurationIsStableAcrossRepeatedStatusBroadcasts() {
+        executeWithMocks { _, plugin ->
+            plugin.scheduleShutdown(ShutdownTimerState.ACTION_SHUTDOWN, 600)
+            val deadline = System.currentTimeMillis() + Duration.ofSeconds(599).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+            // Periodic re-broadcast of the same deadline must not reset the total
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+
+            assertEquals(600_000L, plugin.totalDurationMillis)
+        }
+    }
+
+    @Test
+    fun totalDurationIsUnknownWhileInactive() {
+        executeWithMocks { _, plugin ->
+            assertEquals(0L, plugin.totalDurationMillis)
+
+            plugin.scheduleShutdown(ShutdownTimerState.ACTION_SHUTDOWN, 600)
+            val deadline = System.currentTimeMillis() + Duration.ofSeconds(600).toMillis()
+            plugin.onPacketReceived(statusPacket(true, ShutdownTimerState.ACTION_SHUTDOWN, deadline))
+            plugin.onPacketReceived(statusPacket(false))
+
+            assertEquals(0L, plugin.totalDurationMillis)
+        }
+    }
+
+    @Test
+    fun lastSelectedActionIsPersistedAcrossPluginInstances() {
+        executeWithMocks { device, plugin ->
+            assertEquals(ShutdownTimerState.ACTION_SHUTDOWN, plugin.lastSelectedAction)
+            plugin.lastSelectedAction = ShutdownTimerState.ACTION_SUSPEND
+
+            val recreated = ShutdownTimerPlugin()
+            recreated.setContext(ApplicationProvider.getApplicationContext(), device)
+            assertEquals(ShutdownTimerState.ACTION_SUSPEND, recreated.lastSelectedAction)
+        }
+    }
+
+    @Test
     fun postedWarningIsDismissedWhenTimerIsCancelled() {
         executeWithMocks { _, plugin ->
             val deadline = System.currentTimeMillis() + Duration.ofMinutes(6).toMillis()
