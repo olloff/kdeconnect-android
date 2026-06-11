@@ -296,20 +296,24 @@ fun ShutdownTimerScreen(
                     )
                 }
 
-                val minutes = minutesText.toLongOrNull()
-                HoldToConfirmButton(
-                    text = stringResource(R.string.shutdown_timer_hold_to_start),
-                    icon = Icons.Default.PlayArrow,
-                    enabled = isReachable && minutes != null && minutes > 0,
-                    onConfirm = {
-                        minutes?.let {
-                            plugin.addPresetMinutes(it)
-                            presets = plugin.presetMinutes
-                            customInputVisible = false
-                            plugin.scheduleShutdown(selectedAction, it * 60)
-                        }
-                    },
-                )
+                // A pending timer must be cancelled (hold the button on top)
+                // before a new one can be started
+                if (!state.isActive) {
+                    val minutes = minutesText.toLongOrNull()
+                    HoldToConfirmButton(
+                        text = stringResource(R.string.shutdown_timer_hold_to_start),
+                        icon = Icons.Default.PlayArrow,
+                        enabled = isReachable && minutes != null && minutes > 0,
+                        onConfirm = {
+                            minutes?.let {
+                                plugin.addPresetMinutes(it)
+                                presets = plugin.presetMinutes
+                                customInputVisible = false
+                                plugin.scheduleShutdown(selectedAction, it * 60)
+                            }
+                        },
+                    )
+                }
             }
         }
     }
