@@ -231,6 +231,18 @@ SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted
                 android:value="org.kde.kdeconnect.ui.MainActivity" />
         </activity>
         <activity
+            android:name="org.kde.kdeconnect.plugins.shutdowntimer.ShutdownTimerActivity"
+            android:label="@string/pref_plugin_shutdowntimer"
+            android:exported="false"
+            android:parentActivityName="org.kde.kdeconnect.ui.MainActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="org.kde.kdeconnect.ui.MainActivity" />
+        </activity>
+        <receiver
+            android:name="org.kde.kdeconnect.plugins.shutdowntimer.ShutdownTimerReceiver"
+            android:exported="false" />
+        <activity
             android:name="org.kde.kdeconnect.plugins.runcommand.RunCommandWidgetConfigActivity"
             android:excludeFromRecents="true"
             android:label="@string/pref_plugin_runcommand"

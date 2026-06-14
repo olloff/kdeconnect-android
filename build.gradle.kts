@@ -50,6 +50,11 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 
     sourceSets.getByName("main") {
         res.directories += licenseResDir

@@ -34,10 +34,13 @@ class RunCommandPluginTest {
                 packet = sentPacket
             }
             every { onPluginsChanged() } returns Unit
+            every { deviceId } returns "test_device_id"
         }
         runCommandPlugin = RunCommandPlugin().apply {
             setContext(context, device)
+            onCreate() // packets only arrive after onCreate, which initializes sharedPreferences
         }
+        packet = null // discard the command list request sent by onCreate
     }
 
     @After
