@@ -145,13 +145,20 @@ fun ShutdownTimerScreen(
         }
     }
 
-    // Tick once a second while a timer is pending so the countdown stays current
+    // Tick once a second while a timer is pending so the countdown stays current.
+    // Stops at the deadline: the desktop usually goes offline as it shuts down
+    // or suspends, so no isActive=false packet arrives to flip the state.
     LaunchedEffect(state.isActive) {
         while (state.isActive) {
             now = System.currentTimeMillis()
+            if (state.remainingMillis(now) <= 0) break
             delay(1_000)
         }
     }
+
+    // Treat a passed deadline as ended even without a status packet, so the
+    // cancel button disappears and a new timer can be scheduled.
+    val timerRunning = state.isActive && state.remainingMillis(now) > 0
 
     KdeTheme(context) {
         Scaffold(
@@ -177,7 +184,7 @@ fun ShutdownTimerScreen(
                     NotReachableCard(deviceName = device.name)
                 }
 
-                if (state.isActive) {
+                if (timerRunning) {
                     HoldToConfirmButton(
                         text = stringResource(R.string.shutdown_timer_hold_to_cancel),
                         icon = Icons.Default.Close,
@@ -200,7 +207,7 @@ fun ShutdownTimerScreen(
                     if (WindowInsets.isImeVisible) {
                         // The ring does not fit above the keyboard; show the
                         // bare countdown instead of a squeezed graphic
-                        if (state.isActive) {
+                        if (timerRunning) {
                             Text(
                                 text = DateUtils.formatElapsedTime(remainingMillis / 1_000),
                                 style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum"),
@@ -210,12 +217,12 @@ fun ShutdownTimerScreen(
                         // The plugin tracks the timer's full duration across
                         // screen visits and app restarts
                         val totalMillis = plugin.totalDurationMillis
-                        val progress = if (state.isActive && totalMillis > 0) {
+                        val progress = if (timerRunning && totalMillis > 0) {
                             (remainingMillis.toFloat() / totalMillis).coerceIn(0f, 1f)
                         } else {
                             0f
                         }
-                        val deadlineLabel = if (state.isActive) {
+                        val deadlineLabel = if (timerRunning) {
                             val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
                             stringResource(
                                 R.string.shutdown_timer_action_at_time,
@@ -226,7 +233,7 @@ fun ShutdownTimerScreen(
                             null
                         }
                         CountdownRing(
-                            isActive = state.isActive,
+                            isActive = timerRunning,
                             remainingMillis = remainingMillis,
                             progress = progress,
                             label = deadlineLabel,
@@ -298,7 +305,7 @@ fun ShutdownTimerScreen(
 
                 // A pending timer must be cancelled (hold the button on top)
                 // before a new one can be started
-                if (!state.isActive) {
+                if (!timerRunning) {
                     val minutes = minutesText.toLongOrNull()
                     HoldToConfirmButton(
                         text = stringResource(R.string.shutdown_timer_hold_to_start),
